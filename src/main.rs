@@ -1,8 +1,12 @@
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
+    event::{poll, read, Event, KeyCode, KeyModifiers},
     execute,
     style::Print,
-    terminal::{size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use std::{
     collections::HashSet,
@@ -11,7 +15,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread, time,
+    time,
 };
 
 fn main() -> io::Result<()> {
@@ -29,18 +33,37 @@ fn main() -> io::Result<()> {
 
     // Enter alternate screen terminal buffer
     execute!(stdout(), EnterAlternateScreen, Hide)?;
-    // enable_raw_mode()?;
+    enable_raw_mode()?;
 
+    let mut paused = false;
     // While no stop signal was received, keep iterating
     while !stop_signal.load(Ordering::Relaxed) {
-        execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
-        game.display()?;
-        game.next();
-        thread::sleep(time::Duration::from_millis(200));
+        if poll(time::Duration::from_millis(200))? {
+            if let Event::Key(event) = read()? {
+                match event.code {
+                    KeyCode::Char(char) => match char {
+                        'q' => break,
+                        'c' if event.modifiers.contains(KeyModifiers::CONTROL) => break,
+                        ' ' | 'p' => paused = !paused,
+                        'n' if paused => {
+                            execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
+                            game.display()?;
+                            game.next();
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                }
+            }
+        } else if !paused {
+            execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
+            game.display()?;
+            game.next();
+        }
     }
 
     // Reset terminal screen
-    // disable_raw_mode()?;
+    disable_raw_mode()?;
     execute!(io::stdout(), LeaveAlternateScreen, Show)
 }
 
