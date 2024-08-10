@@ -39,8 +39,8 @@ fn main() -> io::Result<()> {
     // While no stop signal was received, keep iterating
     while !stop_signal.load(Ordering::Relaxed) {
         if poll(time::Duration::from_millis(200))? {
-            if let Event::Key(event) = read()? {
-                match event.code {
+            match read()? {
+                Event::Key(event) => match event.code {
                     KeyCode::Char(char) => match char {
                         'q' => break,
                         'c' if event.modifiers.contains(KeyModifiers::CONTROL) => break,
@@ -53,7 +53,9 @@ fn main() -> io::Result<()> {
                         _ => (),
                     },
                     _ => (),
-                }
+                },
+                Event::Resize(width, height) => game.resize_board(BoardShape { width, height }),
+                _ => (),
             }
         } else if !paused {
             execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
@@ -155,7 +157,9 @@ impl Game {
 
     fn display(&self) -> io::Result<()> {
         for (row, col) in &self.cells {
-            execute!(stdout(), MoveTo(*row, *col), Print("█"))?;
+            if *row < self.board_shape.width && *col < self.board_shape.height {
+                execute!(stdout(), MoveTo(*row, *col), Print("█"))?;
+            }
         }
         execute!(
             stdout(),
@@ -167,5 +171,9 @@ impl Game {
                 self.cells.len()
             ))
         )
+    }
+
+    fn resize_board(&mut self, shape: BoardShape) {
+        self.board_shape = shape
     }
 }
