@@ -71,23 +71,6 @@ fn main() -> io::Result<()> {
 
 type Cell = (u16, u16);
 
-fn cell_neighbors(cell: &Cell) -> Vec<Cell> {
-    let (i, j) = cell;
-    let mut neighbors = Vec::new();
-    let row_range = if *i > 0 { i - 1..=i + 1 } else { *i..=i + 1 };
-    let col_range = if *j > 0 { j - 1..=j + 1 } else { *j..=j + 1 };
-
-    for i in row_range {
-        for j in col_range.clone() {
-            if (i, j) != *cell {
-                neighbors.push((i, j))
-            }
-        }
-    }
-
-    return neighbors;
-}
-
 #[derive(Debug)]
 struct Game {
     cells: HashSet<Cell>,
@@ -125,7 +108,7 @@ impl Game {
     fn next(&mut self) {
         let mut next_generation = HashSet::new();
         for cell in self.cells.iter() {
-            let neighbors = cell_neighbors(cell);
+            let neighbors = self.cell_neighbors(cell);
             // Check if the current cell should live on to the next generation
             let alive_neighbors = neighbors
                 .iter()
@@ -138,7 +121,7 @@ impl Game {
             // Check if any of its dead neighbors should become alive
             let dead_neighbors = neighbors.iter().filter(|cell| !self.cells.contains(cell));
             for cell in dead_neighbors {
-                let alive_neighbors = cell_neighbors(cell).iter().fold(0, |acc, cell| {
+                let alive_neighbors = self.cell_neighbors(cell).iter().fold(0, |acc, cell| {
                     if self.cells.contains(cell) {
                         acc + 1
                     } else {
@@ -175,5 +158,22 @@ impl Game {
 
     fn resize_board(&mut self, shape: BoardShape) {
         self.board_shape = shape
+    }
+
+    fn cell_neighbors(&self, cell: &Cell) -> Vec<Cell> {
+        let (i, j) = cell;
+        let mut neighbors = Vec::new();
+        let row_range = if *i > 0 { i - 1..=i + 1 } else { *i..=i + 1 };
+        let col_range = if *j > 0 { j - 1..=j + 1 } else { *j..=j + 1 };
+
+        for i in row_range {
+            for j in col_range.clone() {
+                if i < self.board_shape.width && j < self.board_shape.height && (i, j) != *cell {
+                    neighbors.push((i, j))
+                }
+            }
+        }
+
+        return neighbors;
     }
 }
