@@ -1,7 +1,7 @@
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{poll, read, Event, KeyCode, KeyModifiers},
-    execute,
+    execute, queue,
     style::Print,
     terminal::{
         disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
@@ -10,7 +10,7 @@ use crossterm::{
 };
 use std::{
     collections::HashSet,
-    io::{self, stdout},
+    io::{self, stdout, Write},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -25,10 +25,7 @@ fn main() -> io::Result<()> {
 
     // Initialize game
     let (width, height) = size().unwrap();
-    let mut game = Game::new(BoardShape {
-        width: width.into(),
-        height: height.into(),
-    });
+    let mut game = Game::new(width, height);
     game.seed();
 
     // Enter alternate screen terminal buffer
@@ -46,7 +43,6 @@ fn main() -> io::Result<()> {
                         'c' if event.modifiers.contains(KeyModifiers::CONTROL) => break,
                         ' ' | 'p' => paused = !paused,
                         'n' if paused => {
-                            execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
                             game.display()?;
                             game.next();
                         }
@@ -54,11 +50,10 @@ fn main() -> io::Result<()> {
                     },
                     _ => (),
                 },
-                Event::Resize(width, height) => game.resize_board(BoardShape { width, height }),
+                Event::Resize(width, height) => game.resize_board(width, height),
                 _ => (),
             }
         } else if !paused {
-            execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
             game.display()?;
             game.next();
         }
@@ -85,10 +80,13 @@ struct BoardShape {
 }
 
 impl Game {
-    fn new(shape: BoardShape) -> Game {
+    fn new(width: u16, height: u16) -> Game {
         Game {
             cells: HashSet::new(),
-            board_shape: shape,
+            board_shape: BoardShape {
+                width,
+                height: height - 1,
+            },
             generation: 0,
         }
     }
@@ -139,25 +137,33 @@ impl Game {
     }
 
     fn display(&self) -> io::Result<()> {
-        for (row, col) in &self.cells {
-            if *row < self.board_shape.width && *col < self.board_shape.height {
-                execute!(stdout(), MoveTo(*row, *col), Print("█"))?;
+        let mut stdout = stdout();
+        for row in 0..self.board_shape.width {
+            for col in 0..self.board_shape.height {
+                let cell = self.cells.get(&(row, col));
+                let char = match cell {
+                    Some(_) => "█",
+                    None => " ",
+                };
+                queue!(stdout, MoveTo(row, col), Print(char))?;
             }
         }
-        execute!(
-            stdout(),
-            MoveTo(0, self.board_shape.height),
-            Clear(ClearType::CurrentLine),
+        queue!(
+            stdout,
+            MoveTo(0, self.board_shape.height + 1),
             Print(format!(
                 "Generation: {}  Population: {}",
                 self.generation,
                 self.cells.len()
-            ))
-        )
+            )),
+            Clear(ClearType::UntilNewLine),
+        )?;
+        stdout.flush()
     }
 
-    fn resize_board(&mut self, shape: BoardShape) {
-        self.board_shape = shape
+    fn resize_board(&mut self, width: u16, height: u16) {
+        self.board_shape.width = width;
+        self.board_shape.height = height - 1;
     }
 
     fn cell_neighbors(&self, cell: &Cell) -> Vec<Cell> {
